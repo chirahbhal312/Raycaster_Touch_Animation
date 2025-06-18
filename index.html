@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>3D Viewer: AR Mode with GLB + FBX</title>
+  <title>3D Viewer: AR Mode with Dropdown Models</title>
   <script type="importmap">
     {
       "imports": {
@@ -16,7 +16,10 @@
   </script>
   <style>
     body { margin: 0; overflow: hidden; font-family: sans-serif; }
-    #modelInput { position: absolute; top: 10px; left: 10px; z-index: 10; }
+    #modelSelect {
+      position: absolute; top: 10px; left: 10px;
+      z-index: 10; padding: 5px;
+    }
     #infoPanel {
       position: absolute; top: 0; right: 0;
       width: 300px; height: 100%;
@@ -37,10 +40,16 @@
   </style>
 </head>
 <body>
-  <input type="file" id="modelInput" accept=".glb,.gltf,.fbx" />
+  <select id="modelSelect">
+    <option disabled selected>Select a model...</option>
+    <option value="model1.glb">model1.glb</option>
+    <option value="model2.fbx">model2.fbx</option>
+    <option value="character.glb">character.glb</option>
+  </select>
+
   <div id="infoPanel">
     <h3>Animations</h3>
-    <div id="meshButtons">Load a model to see animations...</div>
+    <div id="meshButtons">Select a model to see animations...</div>
     <h3>All Animation Names</h3>
     <pre id="animations"></pre>
     <h3>Audios</h3>
@@ -64,10 +73,9 @@
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.xr.enabled = true; // Enable WebXR
+    renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
-
-    document.body.appendChild(ARButton.createButton(renderer)); // AR Button
+    document.body.appendChild(ARButton.createButton(renderer));
 
     const controls = new OrbitControls(camera, renderer.domElement);
 
@@ -79,7 +87,7 @@
     const gltfLoader = new GLTFLoader();
     const fbxLoader = new FBXLoader();
 
-    const input = document.getElementById('modelInput');
+    const select = document.getElementById('modelSelect');
     const meshButtons = document.getElementById('meshButtons');
     const animationsPanel = document.getElementById('animations');
     const audiosPanel = document.getElementById('audios');
@@ -126,29 +134,28 @@
       selectedMeshPanel.textContent = 'None';
     }
 
-    input.addEventListener('change', event => {
-      const file = event.target.files[0];
+    select.addEventListener('change', () => {
+      const file = select.value;
       if (!file) return;
 
-      const filename = file.name.toLowerCase();
-      const reader = new FileReader();
-      reader.onload = e => {
-        const buffer = e.target.result;
+      while (scene.children.length > 2) {
+        scene.remove(scene.children[scene.children.length - 1]);
+      }
 
-        while (scene.children.length > 2) {
-          scene.remove(scene.children[scene.children.length - 1]);
-        }
+      const fileExt = file.toLowerCase().split('.').pop();
+      const path = `./${file}`;
 
-        if (filename.endsWith('.fbx')) {
-          const obj = fbxLoader.parse(buffer, '');
+      if (fileExt === 'fbx') {
+        fbxLoader.load(path, obj => {
           processModel(obj, []);
-        } else {
-          gltfLoader.parse(buffer, '', gltf => {
-            processModel(gltf.scene, gltf.animations);
-          }, err => console.error('GLTF error', err));
-        }
-      };
-      reader.readAsArrayBuffer(file);
+        });
+      } else if (fileExt === 'glb' || fileExt === 'gltf') {
+        gltfLoader.load(path, gltf => {
+          processModel(gltf.scene, gltf.animations);
+        }, undefined, err => console.error('GLTF load error:', err));
+      } else {
+        console.warn('Unsupported file type:', file);
+      }
     });
 
     const raycaster = new THREE.Raycaster();
@@ -180,13 +187,10 @@
       }
     });
 
-    function animate() {
-      renderer.setAnimationLoop(() => {
-        if (mixer) mixer.update(clock.getDelta());
-        renderer.render(scene, camera);
-      });
-    }
-    animate();
+    renderer.setAnimationLoop(() => {
+      if (mixer) mixer.update(clock.getDelta());
+      renderer.render(scene, camera);
+    });
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
